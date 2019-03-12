@@ -33,6 +33,60 @@ const loginRequest = async () => {
     return access_token
 }
 
+const surveySummaryRequest = async (accessToken) => {
+    return rp({
+        method: 'GET',
+        uri: base_api_url + '/survey/summary?_=' + new Date().getTime(),
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        },
+        json: true
+    })
+}
+
+const answersSummaryRequest = async (accessToken, survey) => {
+    return rp({
+        method: 'GET',
+        uri: base_api_url + '/answers/summary/' + survey._id + '?_=' + new Date().getTime(),
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        },
+        json: true
+    })
+}
+
+const answersRequest = async (accessToken, answerSummaryEntry) => {
+    let currentCount = 0
+    let pageLimit = 30
+    let currentAnswerResponse = null
+    while (currentCount < answerSummaryEntry.answered) {
+        let additionalParams = ""
+        if (currentAnswerResponse) {
+            additionalParams = '&sort=_id&after=' + currentAnswerResponse.data[29]._id
+        }
+        currentAnswerResponse = await rp({
+            method: 'GET',
+            uri: base_api_url
+                + '/answers?where%5Bquestion%5D=' + answerSummaryEntry._id
+                + '&populate%5B0%5D%5Bpath%5D=participant'
+                + '&populate%5B0%5D%5Bselect%5D=_id+email+index&populate%5B1%5D%5Bpath%5D=question&populate%5B1%5D%5Bselect%5D=_id+title'
+                + '&limit=' + pageLimit
+                + '&reverse=false'
+                + '&type=' + answerSummaryEntry.type
+                + additionalParams
+                + '&_=' + new Date().getTime(),
+            headers: {
+                'Authorization': 'Bearer ' + accessToken
+            },
+            json: true
+        })
+        currentCount += pageLimit
+        // console.log(currentAnswerResponse.data.length)
+        // console.log(currentAnswerResponse.data)
+    }
+    currentAnswerResponse = null
+}
+
 /********************************
   App Logic
 ********************************/
@@ -42,14 +96,7 @@ var currentAccessToken
 loginRequest()
 .then(function(access_token){
     currentAccessToken = access_token
-    return rp({
-        method: 'GET',
-        uri: base_api_url + '/survey/summary?_=' + new Date().getTime(),
-        headers: {
-            'Authorization': 'Bearer ' + currentAccessToken
-        },
-        json: true
-    })
+    return surveySummaryRequest(currentAccessToken)
 })
 .then(function(surveySummaryResponse){
     console.log("Reached surveySummaryResponse")
@@ -60,14 +107,7 @@ loginRequest()
             console.log("Reached surveySummaryResponse for loop")
             let survey = surveySummaryResponse.data[i]
             // console.log(survey)
-            let answerSummaryResponse = rp({
-                method: 'GET',
-                uri: base_api_url + '/answers/summary/' + survey._id + '?_=' + new Date().getTime(),
-                headers: {
-                    'Authorization': 'Bearer ' + currentAccessToken
-                },
-                json: true
-            })
+            let answerSummaryResponse = answersSummaryRequest(currentAccessToken, survey)
             // console.log(answerSummaryResponse)
             answerSummaryPromises.push(answerSummaryResponse)
         }
@@ -82,41 +122,10 @@ loginRequest()
         for (let answerSummaryObject of answerSummaryResponses) {
             if (Array.isArray(answerSummaryObject.data) && answerSummaryObject.data.length > 0) {
                 for (let answerSummaryEntry of answerSummaryObject.data) {
-                    // console.log(answerSummaryEntry)
-                    let currentCount = 0
-                    let pageLimit = 30
-                    while (currentCount < answerSummaryEntry.answered) {
-                      console.log(currentCount)
-                        let answerListResponse = rp({
-                            method: 'GET',
-                            uri: base_api_url
-                                + '/answers?where%5Bquestion%5D=' + answerSummaryEntry._id
-                                + '&populate%5B0%5D%5Bpath%5D=participant'
-                                + '&populate%5B0%5D%5Bselect%5D=_id+email+index&populate%5B1%5D%5Bpath%5D=question&populate%5B1%5D%5Bselect%5D=_id+title'
-                                + '&limit=' + pageLimit
-                                + '&reverse=false'
-                                + '&type=' + answerSummaryEntry.type
-                                + '&_=' + new Date().getTime(),
-                            headers: {
-                                'Authorization': 'Bearer ' + currentAccessToken
-                            },
-                            json: true
-                        })
-                        console.log("Reached answerListResponse for loop")
-                        // console.log(answerListResponse)
-                        answerListPromises.push(answerListResponse)
-                        currentCount += pageLimit
-                    }
+                    answersRequest(currentAccessToken, answerSummaryEntry)
                 }
             }
         }
-    }
-    return Promise.all(answerListPromises)
-})
-.then(function(answerListResponse) {
-    // console.log(answerListResponse)
-    for (let answer of answerListResponse) {
-        // console.log(answer.data)
     }
 })
 .catch(function(err){
