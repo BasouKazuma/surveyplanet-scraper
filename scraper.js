@@ -3,10 +3,27 @@ const puppeteer = require('puppeteer')
 const rp = require('request-promise')
 const $ = require('cheerio')
 
-const base_www_url = 'https://app.surveyplanet.com'
-const base_api_url = 'https://api.surveyplanet.com/v1'
+const BASE_WWW_URL = 'https://app.surveyplanet.com'
+const BASE_API_URL = 'https://api.surveyplanet.com/v1'
 
-credentials = require('./credentials.json')
+const CREDENTIALS = require('./credentials.json')
+
+var CURRENT_ACCESS_TOKEN
+
+// List of survey ids
+var SURVEY_IDS = []
+
+// survey_id => [question_ids]
+var QUESTION_IDS_BY_SURVEY = {}
+
+// survey_id => {survey_data}
+var SURVEY_MAP = {}
+
+// question_id => {question_data}
+var QUESTION_MAP = {}
+
+// question_id => [{partipant_answer_data}]
+var SURVEY_ANSWERS = {}
 
 
 const loginRequest = async () => {
@@ -15,13 +32,13 @@ const loginRequest = async () => {
         'args' : [ '--disable-web-security' ]
     })
     const page = await browser.newPage()
-    await page.goto(base_www_url + '/login')
+    await page.goto(BASE_WWW_URL + '/login')
     // await page.focus('#email')
     await page.waitForSelector('#email')
     await page.waitForSelector('#password')
-    await page.type('#email', credentials.user_email)
+    await page.type('#email', CREDENTIALS.user_email)
     // await page.focus('#password')
-    await page.type('#password', credentials.user_password)
+    await page.type('#password', CREDENTIALS.user_password)
     await page.click('#login-button')
 
     await page.waitForNavigation()
@@ -36,7 +53,7 @@ const loginRequest = async () => {
 const surveySummaryRequest = async (accessToken) => {
     return rp({
         method: 'GET',
-        uri: base_api_url + '/survey/summary?_=' + new Date().getTime(),
+        uri: BASE_API_URL + '/survey/summary?_=' + new Date().getTime(),
         headers: {
             'Authorization': 'Bearer ' + accessToken
         },
@@ -44,10 +61,21 @@ const surveySummaryRequest = async (accessToken) => {
     })
 }
 
-const answersSummaryRequest = async (accessToken, survey) => {
+const surveyInfoRequest = async (accessToken, surveyId) => {
     return rp({
         method: 'GET',
-        uri: base_api_url + '/answers/summary/' + survey._id + '?_=' + new Date().getTime(),
+        uri: BASE_API_URL + '/survey/' + surveyId + '?populate%5B0%5D%5Bpath%5D=questions&_=' + new Date().getTime(),
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        },
+        json: true
+    })
+}
+
+const answersSummaryRequest = async (accessToken, surveyId) => {
+    return rp({
+        method: 'GET',
+        uri: BASE_API_URL + '/answers/summary/' + surveyId + '?_=' + new Date().getTime(),
         headers: {
             'Authorization': 'Bearer ' + accessToken
         },
@@ -59,6 +87,7 @@ const answersRequest = async (accessToken, answerSummaryEntry) => {
     let currentCount = 0
     let pageLimit = 30
     let currentAnswerResponse = null
+    let answerResponseList = []
     while (currentCount < answerSummaryEntry.answered) {
         let additionalParams = ""
         if (currentAnswerResponse) {
@@ -66,7 +95,7 @@ const answersRequest = async (accessToken, answerSummaryEntry) => {
         }
         currentAnswerResponse = await rp({
             method: 'GET',
-            uri: base_api_url
+            uri: BASE_API_URL
                 + '/answers?where%5Bquestion%5D=' + answerSummaryEntry._id
                 + '&populate%5B0%5D%5Bpath%5D=participant'
                 + '&populate%5B0%5D%5Bselect%5D=_id+email+index&populate%5B1%5D%5Bpath%5D=question&populate%5B1%5D%5Bselect%5D=_id+title'
@@ -80,55 +109,98 @@ const answersRequest = async (accessToken, answerSummaryEntry) => {
             },
             json: true
         })
+        answerResponseList.push(...currentAnswerResponse.data)
         currentCount += pageLimit
-        // console.log(currentAnswerResponse.data.length)
-        // console.log(currentAnswerResponse.data)
     }
-    currentAnswerResponse = null
+    return answerResponseList
+}
+
+const parseResponses = (answerResponseList) => {
+    // console.log(answerResponseList)
+    if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
+        for (let answerResponse of answerResponseList) {
+            console.log(answerResponse)
+            console.log(answerResponse.values)
+            switch (answerResponse.type) {
+                case 'multiple_choice':
+                    answerResponse.values[0].label
+                    break
+                case 'essay':
+                    // TODO
+                    break
+                case 'form':
+                    for (let answer of answerResponse.values) {
+                        answer.label
+                        answer.value
+                    }
+                    break
+                case 'scoring':
+                    for (let answer of answerResponse.values) {
+                        answer.label
+                        answer.value
+                    }
+                    break
+            }
+        }
+    }
 }
 
 /********************************
   App Logic
 ********************************/
 
-var currentAccessToken
-
 loginRequest()
-.then(function(access_token){
-    currentAccessToken = access_token
-    return surveySummaryRequest(currentAccessToken)
+.then(function(access_token) {
+    CURRENT_ACCESS_TOKEN = access_token
+    return surveySummaryRequest(CURRENT_ACCESS_TOKEN)
 })
-.then(function(surveySummaryResponse){
-    console.log("Reached surveySummaryResponse")
-    // console.log(surveySummaryResponse)
-    let answerSummaryPromises = []
+.then(function(surveySummaryResponse) {
+    let surveyInfoPromises = []
+    // let answerSummaryPromises = []
     if (Array.isArray(surveySummaryResponse.data) && surveySummaryResponse.data.length > 0) {
-        for (let i = 0; i < surveySummaryResponse.data.length; ++i) {
-            console.log("Reached surveySummaryResponse for loop")
-            let survey = surveySummaryResponse.data[i]
-            // console.log(survey)
-            let answerSummaryResponse = answersSummaryRequest(currentAccessToken, survey)
-            // console.log(answerSummaryResponse)
+        for (let survey of surveySummaryResponse.data) {
+            SURVEY_IDS.push(survey._id)
+            SURVEY_MAP[survey._id] = survey
+            let surveyInfoResponse = surveyInfoRequest(CURRENT_ACCESS_TOKEN, survey._id)
+            surveyInfoPromises.push(surveyInfoResponse)
+            // let answerSummaryResponse = answersSummaryRequest(CURRENT_ACCESS_TOKEN, survey._id)
+            // answerSummaryPromises.push(answerSummaryResponse)
+        }
+    }
+    return Promise.all(answerSummaryPromises)
+    // return Promise.all(answerSummaryPromises)
+})
+.then(function(surveyInfoResponseList) {
+    let answerSummaryPromises = []
+    if (Array.isArray(surveyInfoResponseList) && surveySummaryResponse.length > 0) {
+        for (let survey of surveySummaryResponse.data) {
+                QUESTION_IDS_BY_SURVEY[survey._id] = []
+            for (let question of survey.questions) {
+                QUESTION_IDS_BY_SURVEY.push(question._id)
+                QUESTION_MAP[question._id] = question
+            }
+            let answerSummaryResponse = answersSummaryRequest(CURRENT_ACCESS_TOKEN, survey._id)
             answerSummaryPromises.push(answerSummaryResponse)
         }
     }
     return Promise.all(answerSummaryPromises)
 })
-.then(function(answerSummaryResponses) {
-    console.log("Reached answerSummaryResponse")
-    // console.log(answerSummaryResponses)
-    let answerListPromises = []
-    if (Array.isArray(answerSummaryResponses) && answerSummaryResponses.length > 0) {
-        for (let answerSummaryObject of answerSummaryResponses) {
+.then(function(answerSummaryResponseList) {
+    if (Array.isArray(answerSummaryResponseList) && answerSummaryResponseList.length > 0) {
+        for (let answerSummaryObject of answerSummaryResponseList) {
             if (Array.isArray(answerSummaryObject.data) && answerSummaryObject.data.length > 0) {
                 for (let answerSummaryEntry of answerSummaryObject.data) {
-                    answersRequest(currentAccessToken, answerSummaryEntry)
+                    answersRequest(CURRENT_ACCESS_TOKEN, answerSummaryEntry)
+                    .then(function(answerResponseList) {
+                        SURVEY_ANSWERS[answerSummaryEntry._id] = answerResponseList
+                        parseResponses(answerResponseList)
+                    })
                 }
             }
         }
     }
 })
-.catch(function(err){
+.catch(function(err) {
     //handle error
     console.log("An error occurred")
     console.log(err)
