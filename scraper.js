@@ -13,9 +13,6 @@ var CURRENT_ACCESS_TOKEN
 // List of survey ids
 var SURVEY_IDS = []
 
-// survey_id => [question_ids]
-var QUESTION_IDS_BY_SURVEY = {}
-
 // survey_id => {survey_data}
 var SURVEY_MAP = {}
 
@@ -119,8 +116,8 @@ const parseResponses = (answerResponseList) => {
     // console.log(answerResponseList)
     if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
         for (let answerResponse of answerResponseList) {
-            console.log(answerResponse)
-            console.log(answerResponse.values)
+            // console.log(answerResponse)
+            // console.log(answerResponse.values)
             switch (answerResponse.type) {
                 case 'multiple_choice':
                     answerResponse.values[0].label
@@ -156,45 +153,54 @@ loginRequest()
 })
 .then(function(surveySummaryResponse) {
     let surveyInfoPromises = []
-    // let answerSummaryPromises = []
     if (Array.isArray(surveySummaryResponse.data) && surveySummaryResponse.data.length > 0) {
         for (let survey of surveySummaryResponse.data) {
             SURVEY_IDS.push(survey._id)
             SURVEY_MAP[survey._id] = survey
             let surveyInfoResponse = surveyInfoRequest(CURRENT_ACCESS_TOKEN, survey._id)
             surveyInfoPromises.push(surveyInfoResponse)
-            // let answerSummaryResponse = answersSummaryRequest(CURRENT_ACCESS_TOKEN, survey._id)
-            // answerSummaryPromises.push(answerSummaryResponse)
         }
     }
-    return Promise.all(answerSummaryPromises)
-    // return Promise.all(answerSummaryPromises)
+    return Promise.all(surveyInfoPromises)
 })
 .then(function(surveyInfoResponseList) {
     let answerSummaryPromises = []
-    if (Array.isArray(surveyInfoResponseList) && surveySummaryResponse.length > 0) {
-        for (let survey of surveySummaryResponse.data) {
-                QUESTION_IDS_BY_SURVEY[survey._id] = []
-            for (let question of survey.questions) {
-                QUESTION_IDS_BY_SURVEY.push(question._id)
-                QUESTION_MAP[question._id] = question
+    if (Array.isArray(surveyInfoResponseList) && surveyInfoResponseList.length > 0) {
+        for (let survey of surveyInfoResponseList) {
+            if (Array.isArray(survey.data.questions) && survey.data.questions.length > 0) {
+                for (let question of survey.data.questions) {
+                    QUESTION_MAP[question._id] = question
+                }
             }
-            let answerSummaryResponse = answersSummaryRequest(CURRENT_ACCESS_TOKEN, survey._id)
+            let answerSummaryResponse = answersSummaryRequest(CURRENT_ACCESS_TOKEN, survey.data._id)
             answerSummaryPromises.push(answerSummaryResponse)
         }
     }
     return Promise.all(answerSummaryPromises)
 })
 .then(function(answerSummaryResponseList) {
+    let answerResponseListPromises = []
     if (Array.isArray(answerSummaryResponseList) && answerSummaryResponseList.length > 0) {
         for (let answerSummaryObject of answerSummaryResponseList) {
             if (Array.isArray(answerSummaryObject.data) && answerSummaryObject.data.length > 0) {
                 for (let answerSummaryEntry of answerSummaryObject.data) {
-                    answersRequest(CURRENT_ACCESS_TOKEN, answerSummaryEntry)
-                    .then(function(answerResponseList) {
-                        SURVEY_ANSWERS[answerSummaryEntry._id] = answerResponseList
-                        parseResponses(answerResponseList)
-                    })
+                    let answerResponseList = answersRequest(CURRENT_ACCESS_TOKEN, answerSummaryEntry)
+                    answerResponseListPromises.push(answerResponseList)
+                }
+            }
+        }
+    }
+    return Promise.all(answerResponseListPromises)
+})
+.then(function(answerResponseList) {
+    if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
+        for (let answerResponses of answerResponseList) {
+            if (Array.isArray(answerResponses) && answerResponses.length > 0) {
+                for (let answerResponse of answerResponses) {
+                    if (!SURVEY_ANSWERS[answerResponse.question._id]) {
+                        SURVEY_ANSWERS[answerResponse.question._id] = []
+                    }
+                    SURVEY_ANSWERS[answerResponse.question._id].push(answerResponse)
                 }
             }
         }
