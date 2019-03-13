@@ -3,6 +3,8 @@ const puppeteer = require('puppeteer')
 const rp = require('request-promise')
 const $ = require('cheerio')
 
+const SurveyAnswer = require('./libs/models/SurveyAnswer.js')
+
 const BASE_WWW_URL = 'https://app.surveyplanet.com'
 const BASE_API_URL = 'https://api.surveyplanet.com/v1'
 
@@ -112,34 +114,42 @@ const answersRequest = async (accessToken, answerSummaryEntry) => {
     return answerResponseList
 }
 
-const parseResponses = (answerResponseList) => {
-    // console.log(answerResponseList)
-    if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
-        for (let answerResponse of answerResponseList) {
-            // console.log(answerResponse)
-            // console.log(answerResponse.values)
-            switch (answerResponse.type) {
-                case 'multiple_choice':
-                    answerResponse.values[0].label
-                    break
-                case 'essay':
-                    // TODO
-                    break
-                case 'form':
-                    for (let answer of answerResponse.values) {
-                        answer.label
-                        answer.value
-                    }
-                    break
-                case 'scoring':
-                    for (let answer of answerResponse.values) {
-                        answer.label
-                        answer.value
-                    }
-                    break
+const parseAnswer = (answerResponse) => {
+    let values = []
+    switch (answerResponse.type) {
+        case 'multiple_choice':
+            values.push({
+                label: 'value',
+                value: answerResponse.values[0].label
+            })
+            break
+        case 'essay':
+            // TODO
+            break
+        case 'form':
+            for (let answer of answerResponse.values) {
+                values.push({
+                    label: answer.label,
+                    value: answer.value
+                })
             }
-        }
+            break
+        case 'scoring':
+            for (let answer of answerResponse.values) {
+                values.push({
+                    label: answer.label,
+                    value: answer.value
+                })
+            }
+            break
     }
+    let surveyAnswer = new SurveyAnswer(
+        answerResponse.question._id,
+        answerResponse.question.title,
+        answerResponse.participant.index,
+        values
+    )
+   return surveyAnswer
 }
 
 /********************************
@@ -193,6 +203,12 @@ loginRequest()
     return Promise.all(answerResponseListPromises)
 })
 .then(function(answerResponseList) {
+    let folder = './output'
+    try {
+        fs.statSync(folder)
+    } catch (err) {
+        fs.mkdirSync(folder, { recursive: true })
+    }
     if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
         for (let answerResponses of answerResponseList) {
             if (Array.isArray(answerResponses) && answerResponses.length > 0) {
@@ -201,6 +217,13 @@ loginRequest()
                         SURVEY_ANSWERS[answerResponse.question._id] = []
                     }
                     SURVEY_ANSWERS[answerResponse.question._id].push(answerResponse)
+                    let surveyAnswer = parseAnswer(answerResponse)
+                    let filename = folder + '/' + answerResponse.question._id + '.csv'
+                    let file_exists = fs.existsSync(filename)
+                    if (!file_exists) {
+                        fs.writeFileSync(filename, surveyAnswer.toCSVHeader())
+                    }
+                    fs.appendFileSync(filename, surveyAnswer.toCSV())
                 }
             }
         }
