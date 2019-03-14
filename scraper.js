@@ -114,11 +114,17 @@ const answersRequest = async (accessToken, answerSummaryEntry) => {
     return answerResponseList
 }
 
-const parseAnswer = (answerResponse) => {
-    let values = []
+const parseAnswer = (questionMap, answerResponse) => {
+    let questionResponse = questionMap[answerResponse.question._id]
+    let answerlabelMap = {}
+    for (let i = 0; i < answerResponse.values.length; ++i) {
+        let entry = answerResponse.values[i]
+        answerlabelMap[entry.label] = entry.value
+    }
+    let participant_answers = []
     switch (answerResponse.type) {
         case 'multiple_choice':
-            values.push({
+            participant_answers.push({
                 label: 'value',
                 value: answerResponse.values[0].label
             })
@@ -127,18 +133,18 @@ const parseAnswer = (answerResponse) => {
             // TODO
             break
         case 'form':
-            for (let answer of answerResponse.values) {
-                values.push({
-                    label: answer.label,
-                    value: answer.value
+            for (let questionLabel of questionResponse.properties.labels) {
+                participant_answers.push({
+                    label: questionLabel,
+                    value: answerlabelMap[questionLabel]
                 })
             }
             break
         case 'scoring':
-            for (let answer of answerResponse.values) {
-                values.push({
-                    label: answer.label,
-                    value: answer.value
+            for (let questionLabel of questionResponse.properties.labels) {
+                participant_answers.push({
+                    label: questionLabel,
+                    value: answerlabelMap[questionLabel]
                 })
             }
             break
@@ -147,7 +153,7 @@ const parseAnswer = (answerResponse) => {
         answerResponse.question._id,
         answerResponse.question.title,
         answerResponse.participant.index,
-        values
+        participant_answers
     )
    return surveyAnswer
 }
@@ -203,10 +209,12 @@ loginRequest()
     return Promise.all(answerResponseListPromises)
 })
 .then(function(answerResponseList) {
-    let folder = './output'
+    let output_folder = __dirname + '/output'
+    let folder = output_folder + '/' + new Date().getTime()
     try {
         fs.statSync(folder)
     } catch (err) {
+        fs.mkdirSync(output_folder, { recursive: true })
         fs.mkdirSync(folder, { recursive: true })
     }
     if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
@@ -217,7 +225,7 @@ loginRequest()
                         SURVEY_ANSWERS[answerResponse.question._id] = []
                     }
                     SURVEY_ANSWERS[answerResponse.question._id].push(answerResponse)
-                    let surveyAnswer = parseAnswer(answerResponse)
+                    let surveyAnswer = parseAnswer(QUESTION_MAP, answerResponse)
                     let filename = folder + '/' + answerResponse.question._id + '.csv'
                     let file_exists = fs.existsSync(filename)
                     if (!file_exists) {
