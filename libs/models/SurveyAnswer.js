@@ -14,7 +14,7 @@ class SurveyAnswer {
         for (let entry of this.participant_answers) {
             columns.push(entry.label)
         }
-        return columns.join(",") + '\n'
+        return '"' + columns.join('","') + '"' + '\n'
     }
 
     toCSV() {
@@ -23,7 +23,7 @@ class SurveyAnswer {
         for (let entry of this.participant_answers) {
             columns.push(entry.value)
         }
-        return columns.join(",") + '\n'
+        return '"' + columns.join('","') + '"' + '\n'
     }
 
 }
