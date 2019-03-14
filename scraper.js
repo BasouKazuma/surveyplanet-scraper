@@ -122,32 +122,18 @@ const parseAnswer = (questionMap, answerResponse) => {
         answerlabelMap[entry.label] = entry.value
     }
     let participant_answers = []
-    switch (answerResponse.type) {
-        case 'multiple_choice':
-            participant_answers.push({
-                label: 'value',
-                value: answerResponse.values[0].label
-            })
-            break
-        case 'essay':
-            // TODO
-            break
-        case 'form':
-            for (let questionLabel of questionResponse.properties.labels) {
-                participant_answers.push({
-                    label: questionLabel,
-                    value: answerlabelMap[questionLabel]
-                })
-            }
-            break
-        case 'scoring':
-            for (let questionLabel of questionResponse.properties.labels) {
-                participant_answers.push({
-                    label: questionLabel,
-                    value: answerlabelMap[questionLabel]
-                })
-            }
-            break
+    for (let questionLabel of questionResponse.properties.labels) {
+        let answer = {}
+        answer.label = questionLabel
+        answer.value = answerlabelMap[questionLabel] != 'false' ? answerlabelMap[questionLabel] : ''
+        participant_answers.push(answer)
+    }
+    if (questionResponse.properties.other) {
+        let questionLabel = questionResponse.properties.other
+        let answer = {}
+        answer.label = questionLabel
+        answer.value = answerlabelMap[questionLabel] != 'false' ? answerlabelMap[questionLabel] : ''
+        participant_answers.push(answer)
     }
     let surveyAnswer = new SurveyAnswer(
         answerResponse.question._id,
