@@ -158,6 +158,24 @@ const parseAnswer = (questionMap, answerResponse) => {
    return surveyAnswer
 }
 
+const generateQuestionMapFile = (surveyIds, surveyMap, questionMap) => {
+    let questionList = []
+    if (Array.isArray(surveyIds) && surveyIds.length > 0) {
+        for ( let currentSurveyId of surveyIds) {
+            let currentSurvey = surveyMap[currentSurveyId]
+            if (Array.isArray(currentSurvey.questions) && currentSurvey.questions.length > 0) {
+                for (let question_id of currentSurvey.questions) {
+                    questionList.push({
+                        id: question_id,
+                        title: questionMap[question_id].title
+                    })
+                }
+            }
+        }
+    }
+    return questionList
+}
+
 /********************************
   App Logic
 ********************************/
@@ -221,6 +239,8 @@ loginRequest()
     } catch (err) {
         fs.mkdirSync(folder, { recursive: true })
     }
+    let questionList = generateQuestionMapFile(SURVEY_IDS, SURVEY_MAP, QUESTION_MAP)
+    fs.writeFileSync(folder + '/question_map.json', JSON.stringify(questionList, null, 2))
     if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
         for (let answerResponses of answerResponseList) {
             if (Array.isArray(answerResponses) && answerResponses.length > 0) {
