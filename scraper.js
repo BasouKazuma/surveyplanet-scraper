@@ -212,9 +212,13 @@ loginRequest()
     let output_folder = __dirname + '/output'
     let folder = output_folder + '/' + new Date().getTime()
     try {
-        fs.statSync(folder)
+        fs.statSync(output_folder)
     } catch (err) {
         fs.mkdirSync(output_folder, { recursive: true })
+    }
+    try {
+        fs.statSync(folder)
+    } catch (err) {
         fs.mkdirSync(folder, { recursive: true })
     }
     if (Array.isArray(answerResponseList) && answerResponseList.length > 0) {
