@@ -5,7 +5,7 @@ This will scrape SurveyPlanet and output the results to a series CSV files.
 
 ## How to Run
 
-* Update the `credentials.json` with your own email/password for SurveyPlanet
+* Add a `credentials.json` file with your own email/password for SurveyPlanet. Follow the `credentials_template.json` file.
 
 * Run the script
 `node scraper.js`
